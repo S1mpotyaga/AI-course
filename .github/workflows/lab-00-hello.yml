@@ -32,11 +32,11 @@ jobs:
         shell: bash
         run: |
           required_files=(
-            "info.md"
-            "goals.md"
-            "commands.md"
-            ".gitignore"
-            "image/test.png"
+            "./lab-00-hello/info.md"
+            "./lab-00-hello/goals.md"
+            "./lab-00-hello/commands.md"
+            "./lab-00-hello/.gitignore"
+            "./lab-00-hello/image/test.png"
           )
 
           errors=0
