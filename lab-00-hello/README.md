@@ -64,19 +64,18 @@ cat > commands.md
 - `git branch` — 
 - `git checkout` — Здесь укажите, что обозначает флаг -b.
 
-Теперь в интерфейсе VS Code создайте папку `image` и вставьте туда картинку с названием `test.png`.
-Далее откройте файле `.gitignore` и укажите в новой строке `image/test.png`.
+Теперь в интерфейсе VS Code создайте папку `image` и вставьте туда две картинки с названием `test.png` и `test1.png`.
+Далее откройте файле `.gitignore` и укажите в новой строке `image/test1.png`. Как думаете для чего это надо? Напишите свой ответ в файле `info.md`.
+
 
 Выполните по очереди:
 
 ```bash
 git status
-git add commands.md .gitignore image/test.png
+git add .
 git commit -m "add git notes and ignore rules"
 git push -u origin <surnmae>-lab-00-<name of task>
 ```
-
-Если вторая команда не выполняется, то в файле `commands.md` объясните в чем ошибка и что за файл `.gitignore`. Затем уберите из `.gitignore` последнюю строку `image/test.png`. И снова выполните предыдущие команды.
 
 Откройте ветку `<surname>-lab-00-<name of task>` на GitHub и убедитесь, что все файлы появились.
 
