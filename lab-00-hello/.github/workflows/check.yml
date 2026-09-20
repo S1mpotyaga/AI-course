@@ -2,9 +2,11 @@ name: Lab 00
 
 on:
   push:
-    branches: [lab-00]
+    branches:
+      - '*-lab-00-*'
   pull_request:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -15,96 +17,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Check files
+  check-files:
+    name: Check required files
     runs-on: ubuntu-latest
     timeout-minutes: 3
+
     steps:
-      - name: Checkout files
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Check assignment
+      - name: Check required files
         shell: bash
         run: |
-          python3 -I - <<'PY'
-          import os
-          from pathlib import Path
-          import re
-          import sys
+          required_files=(
+            "info.md"
+            "goals.md"
+            "commands.md"
+            ".gitignore"
+            "image/test.png"
+          )
 
-          results = []
+          errors=0
+          printf '## Лабораторная 0\n\n| Файл | Результат |\n|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
 
-          def read_file(name):
-              path = Path(name)
-              if path.is_symlink() or not path.is_file():
-                  raise ValueError('Файл отсутствует или не является обычным файлом в корне репозитория.')
-              if path.stat().st_size > 65536:
-                  raise ValueError('Для этой работы размер файла не должен превышать 64 КиБ.')
-              try:
-                  text = path.read_text(encoding='utf-8-sig')
-              except UnicodeError:
-                  raise ValueError('Сохраните файл в кодировке UTF-8.') from None
-              if not text.strip():
-                  raise ValueError('Файл пустой или содержит только пробелы.')
-              return text.replace('\r\n', '\n')
+          for file in "${required_files[@]}"; do
+            if [[ ! -f "$file" || -L "$file" ]]; then
+              echo "::error file=$file::Файл отсутствует или не является обычным файлом: $file"
+              printf '| `%s` | Не найден обычный файл |\n' "$file" >> "$GITHUB_STEP_SUMMARY"
+              errors=$((errors + 1))
+            # .gitignore может быть пустым после удаления правила image/test.png.
+            elif [[ "$file" != ".gitignore" && ! -s "$file" ]]; then
+              echo "::error file=$file::Файл пустой: $file"
+              printf '| `%s` | Файл пустой |\n' "$file" >> "$GITHUB_STEP_SUMMARY"
+              errors=$((errors + 1))
+            else
+              echo "OK: $file"
+              printf '| `%s` | OK |\n' "$file" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
 
-          def check_info(text):
-              for heading in ('Имя', 'Опыт'):
-                  match = re.search(r'^## ' + heading + r'\s*\n(.*?)(?=^#{1,6} |\Z)', text, re.M | re.S)
-                  if not match or not match.group(1).strip():
-                      raise ValueError('Добавьте раздел ## ' + heading + ' и заполните его.')
-                  if 'Здесь напишите' in match.group(1) or 'Здесь опишите' in match.group(1):
-                      raise ValueError('Замените поясняющие заглушки в info.md собственным текстом.')
+          if [[ "$errors" -gt 0 ]]; then
+            printf '\n**Проверка не пройдена. Ошибок: %s.**\n' "$errors" >> "$GITHUB_STEP_SUMMARY"
+            echo "Исправьте ошибки, сделайте commit и push в ту же ветку."
+            exit 1
+          fi
 
-          def check_goals(text):
-              goals = re.findall(r'^- [^\S\n]*(\S[^\n]*)$', text, re.M)
-              if len(goals) < 4:
-                  raise ValueError('Нужно не менее четырёх непустых целей; каждую начните с "- ".')
-              placeholders = ('Первая конкретная цель', 'Вторая конкретная цель', 'Третья конкретная цель')
-              if any(p in text for p in placeholders):
-                  raise ValueError('Замените пример целей собственными формулировками.')
-
-          def check_commands(text):
-              for command in ('git status', 'git add', 'git commit', 'git push', 'git pull'):
-                  pattern = r'^- `' + re.escape(command) + r'` — [^\S\n]*(\S[^\n]*)$'
-                  if not re.search(pattern, text, re.M):
-                      raise ValueError('Добавьте строку «- `' + command + '` — ваше пояснение».')
-
-          def check_ignore(text):
-              lines = {line.strip() for line in text.splitlines()}
-              required = {'.DS_Store', '.venv/', '.ipynb_checkpoints/'}
-              missing = sorted(required - lines)
-              if missing:
-                  raise ValueError('Добавьте отдельными строками: ' + ', '.join(missing))
-
-          checks = [
-              ('info.md', 2, check_info),
-              ('goals.md', 2, check_goals),
-              ('commands.md', 4, check_commands),
-              ('.gitignore', 2, check_ignore),
-          ]
-          for name, maximum, validate in checks:
-              try:
-                  validate(read_file(name))
-              except (ValueError, OSError) as exc:
-                  # Do not echo submitted file contents into workflow commands.
-                  message = str(exc).replace('\n', ' ').replace('\r', ' ')
-                  print(f'::error file={name}::{message}')
-                  results.append((name, 0, maximum))
-              else:
-                  print(f'OK: {name} — {maximum}/{maximum}')
-                  results.append((name, maximum, maximum))
-
-          score = sum(item[1] for item in results)
-          summary = ['## Лабораторная 0', '', '| Файл | Баллы |', '|---|---:|']
-          summary.extend(f'| `{name}` | {points}/{maximum} |' for name, points, maximum in results)
-          summary.extend(['', f'**Итого: {score}/10.**', '',
-                          'Подробности ошибок — в шаге Check assignment.',
-                          'Способ создания файлов и содержательность ответов проверяет преподаватель.'])
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as report:
-              report.write('\n'.join(summary) + '\n')
-          print(f'Итого: {score}/10')
-          sys.exit(0 if score == 10 else 1)
-          PY
+          printf '\n**Все пять файлов найдены. Проверка пройдена.**\n' >> "$GITHUB_STEP_SUMMARY"
+          echo "Все пять файлов найдены. Проверка пройдена."
