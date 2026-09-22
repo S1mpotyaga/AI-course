@@ -1,0 +1,131 @@
+name: Lab 01 Statistics
+
+on:
+  push:
+    branches:
+      - '*-lab-01-*'
+  pull_request:
+    branches:
+      - lab-01-statistics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab-01-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-solutions:
+    name: Check notebook solutions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check numpy
+
+      - name: Run notebook checkers
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          import json
+          import runpy
+          import sys
+          from pathlib import Path
+
+          root = Path("lab-01-statistics")
+          notebook_path = root / "lesson_01_statistics_tasks.ipynb"
+          tests_path = root / "tests"
+          sys.path.insert(0, str(tests_path.resolve()))
+
+          expected_functions = [
+              "mean_manual", "median_manual", "variance_manual", "std_manual",
+              "variance_via_sums", "raw_moment", "central_moment",
+              "skewness_manual", "build_prefixes", "range_sum", "range_mean",
+              "range_variance", "range_skewness", "solve_text", "sum_matrice",
+          ]
+          checker_names = [
+              "check_mean.py", "check_median.py", "check_variance_manual.py",
+              "check_std_manual.py", "check_variance_via_sums.py",
+              "check_raw_moment.py", "check_central_moment.py",
+              "check_skewness.py", "check_prefixes.py", "check_range_sum.py",
+              "check_range_mean.py", "check_range_variance.py",
+              "check_range_skewness.py", "check_solver.py", "check_matrix_sum.py",
+          ]
+
+          notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+          namespace = {"__name__": "__notebook__"}
+          expected_set = set(expected_functions)
+          definition_sources = []
+
+          for cell in notebook["cells"]:
+              if cell.get("cell_type") != "code":
+                  continue
+              source = "".join(cell.get("source", []))
+              try:
+                  tree = ast.parse(source)
+              except SyntaxError:
+                  continue
+              names = {
+                  node.name for node in ast.walk(tree)
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+              }
+              if names & expected_set:
+                  definition_sources.append(source)
+
+          for source in definition_sources:
+              exec(compile(source, str(notebook_path), "exec"), namespace)
+
+          missing = [name for name in expected_functions if name not in namespace]
+          invalid = [
+              name for name in expected_functions
+              if name in namespace and not callable(namespace[name])
+          ]
+          unimplemented = []
+          for source in definition_sources:
+              tree = ast.parse(source)
+              for node in ast.walk(tree):
+                  if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                      continue
+                  if node.name not in expected_set:
+                      continue
+                  function_source = ast.get_source_segment(source, node) or ""
+                  if any(marker in function_source for marker in ("TODO", "NotImplementedError")):
+                      unimplemented.append(node.name)
+
+          if missing or invalid or unimplemented:
+              print(f"Missing functions: {missing}")
+              print(f"Invalid functions: {invalid}")
+              print(f"Unimplemented functions: {unimplemented}")
+              raise SystemExit(1)
+
+          passed = []
+          failed = []
+          for checker_name in checker_names:
+              try:
+                  runpy.run_path(str(tests_path / checker_name), init_globals=namespace.copy())
+                  passed.append(checker_name)
+              except Exception as error:
+                  failed.append((checker_name, type(error).__name__, str(error)))
+
+          print(f"Functions checked: {len(expected_functions)}")
+          print(f"Checkers passed: {len(passed)}/{len(checker_names)}")
+          if failed:
+              for checker_name, error_type, message in failed:
+                  print(f"FAILED {checker_name}: {error_type}: {message}")
+              raise SystemExit(1)
+          print("All notebook checkers passed.")
+          PY
