@@ -1,24 +1,26 @@
 name: Lab 01 Statistics
 
 on:
-  push:
-    branches:
-      - '*-lab-01-*'
   pull_request:
     branches:
-      - lab-01-statistics
-  workflow_dispatch:
+      - main
+    types:
+      - closed
 
 permissions:
   contents: read
 
 concurrency:
-  group: lab-01-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: lab-01-merged-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   check-solutions:
     name: Check notebook solutions
+    if: >-
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.head.ref, '-lab-01-') &&
+      !contains(github.event.pull_request.head.ref, '/')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
